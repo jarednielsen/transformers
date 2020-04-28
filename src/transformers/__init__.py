@@ -472,6 +472,7 @@ if is_tf_available():
         TFAlbertPreTrainedModel,
         TFAlbertMainLayer,
         TFAlbertModel,
+        TFAlbertForPreTraining,
         TFAlbertForMaskedLM,
         TFAlbertForSequenceClassification,
         TFAlbertForQuestionAnswering,

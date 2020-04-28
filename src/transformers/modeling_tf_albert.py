@@ -395,6 +395,7 @@ class TFAlbertTransformer(tf.keras.layers.Layer):
         self.config = config
         self.output_attentions = config.output_attentions
         self.output_hidden_states = config.output_hidden_states
+        self.pre_layer_norm = config.pre_layer_norm
         self.embedding_hidden_mapping_in = tf.keras.layers.Dense(
             config.hidden_size,
             kernel_initializer=get_initializer(config.initializer_range),
@@ -404,6 +405,8 @@ class TFAlbertTransformer(tf.keras.layers.Layer):
             TFAlbertLayerGroup(config, name="albert_layer_groups_._{}".format(i))
             for i in range(config.num_hidden_groups)
         ]
+        if self.pre_layer_norm:
+            self.LayerNorm = tf.keras.layers.LayerNormalization(epsilon=config.layer_norm_eps, name="LayerNorm")
 
     def call(self, inputs, training=False):
         hidden_states, attention_mask, head_mask = inputs
@@ -436,6 +439,9 @@ class TFAlbertTransformer(tf.keras.layers.Layer):
 
             if self.output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if self.pre_layer_norm:
+            hidden_states = self.LayerNorm(hidden_states)
 
         outputs = (hidden_states,)
         if self.output_hidden_states:
@@ -731,6 +737,83 @@ class TFAlbertModel(TFAlbertPreTrainedModel):
         return outputs
 
 
+@add_start_docstrings(
+    """Albert Model with two heads on top for pre-training:
+    a `masked language modeling` head and a `sentence order prediction` (classification) head. """,
+    ALBERT_START_DOCSTRING,
+)
+class TFAlbertForPreTraining(TFAlbertPreTrainedModel):
+    def __init__(self, config, *inputs, **kwargs):
+        super().__init__(config, *inputs, **kwargs)
+
+        self.albert = TFAlbertMainLayer(config, name="albert")
+        self.predictions = TFAlbertMLMHead(config, self.albert.embeddings, name="predictions")
+        self.sop = TFAlbertSOPHead(config)
+
+    @add_start_docstrings_to_callable(ALBERT_INPUTS_DOCSTRING)
+    def __call__(self, inputs, **kwargs):
+        r"""
+    Return:
+        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
+        prediction_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        sop_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, 2)`):
+            Prediction scores of the sentence order prediction (classification) head (scores of True/False continuation before SoftMax).
+        hidden_states (:obj:`tuple(tf.Tensor)`, `optional`, returned when :obj:`config.output_hidden_states=True`):
+            tuple of :obj:`tf.Tensor` (one for the output of the embeddings + one for the output of each layer)
+            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        attentions (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_attentions=True``):
+            tuple of :obj:`tf.Tensor` (one for each layer) of shape
+            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`:
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
+
+    Examples::
+
+        import tensorflow as tf
+        from transformers import AlbertTokenizer, TFAlbertForPreTraining
+
+        tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
+        model = TFBertForPreTraining.from_pretrained('albert-base-v2')
+        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
+        outputs = model(input_ids)
+        prediction_scores, sop_scores = outputs[:2]
+
+        """
+        outputs = self.albert(inputs, **kwargs)
+
+        # MLM portion
+        sequence_output = outputs[0]
+        mlm_logits = self.predictions(sequence_output)
+
+        # SOP portion
+        pooled_output = outputs[1]
+        sop_logits = self.sop(pooled_output, training=kwargs.get("training", False))
+
+        # Combine into outputs
+        # Add hidden_states and attention if they are here
+        outputs = (mlm_logits, sop_logits) + outputs[2:]
+
+        return outputs  # prediction_scores, logits, (hidden_states), (attentions)
+
+
+class TFAlbertSOPHead(tf.keras.layers.Layer):
+    def __init__(self, config, **kwargs):
+        super().__init__(**kwargs)
+
+        self.dropout = tf.keras.layers.Dropout(config.classifier_dropout_prob)
+        self.classifier = tf.keras.layers.Dense(
+            config.num_labels, kernel_initializer=get_initializer(config.initializer_range), name="classifier",
+        )
+
+    def __call__(self, pooled_output, training: bool):
+        dropout_pooled_output = self.dropout(pooled_output, training=training)
+        logits = self.classifier(dropout_pooled_output)
+        return logits
+
+
 @add_start_docstrings("""Albert Model with a `language modeling` head on top. """, ALBERT_START_DOCSTRING)
 class TFAlbertForMaskedLM(TFAlbertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
@@ -859,7 +942,7 @@ class TFAlbertForQuestionAnswering(TFAlbertPreTrainedModel):
     def call(self, inputs, **kwargs):
         r"""
     Return:
-        :obj:`tuple(torch.FloatTensor)` comprising various elements depending on the configuration (:class:`~transformers.BertConfig`) and inputs:
+        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
         start_scores (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length,)`):
             Span-start scores (before SoftMax).
         end_scores (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length,)`):
