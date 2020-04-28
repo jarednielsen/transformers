@@ -155,7 +155,6 @@ def load_pytorch_weights_in_tf2_model(tf_model, pt_state_dict, tf_inputs=None, a
         name, transpose = convert_tf_weight_name_to_pt_weight_name(
             sw_name, start_prefix_to_remove=start_prefix_to_remove
         )
-
         # Find associated numpy array in pytorch model state dict
         if name not in pt_state_dict:
             if allow_missing_keys:

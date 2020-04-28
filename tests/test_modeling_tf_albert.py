@@ -40,6 +40,7 @@ class TFAlbertModelTest(TFModelTesterMixin, unittest.TestCase):
     all_model_classes = (
         (
             TFAlbertModel,
+            TFAlbertForPreTraining,
             TFAlbertForMaskedLM,
             TFAlbertForSequenceClassification,
             TFAlbertForQuestionAnswering,
@@ -237,6 +238,10 @@ class TFAlbertModelTest(TFModelTesterMixin, unittest.TestCase):
     def test_albert_model(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_albert_model(*config_and_inputs)
+
+    def test_for_pretraining(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_albert_for_pretraining(*config_and_inputs)
 
     def test_for_masked_lm(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()

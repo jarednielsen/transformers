@@ -493,6 +493,7 @@ class TFAlbertMLMHead(tf.keras.layers.Layer):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.activation(hidden_states)
         hidden_states = self.LayerNorm(hidden_states)
+        # TODO: Should we be adding a bias twice? Only add one bias in PyTorch AlbertMLMHead
         hidden_states = self.decoder(hidden_states, mode="linear") + self.decoder_bias
         hidden_states = hidden_states + self.bias
         return hidden_states
@@ -745,16 +746,19 @@ class TFAlbertModel(TFAlbertPreTrainedModel):
 class TFAlbertForPreTraining(TFAlbertPreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
         super().__init__(config, *inputs, **kwargs)
+        self.num_labels = config.num_labels
 
         self.albert = TFAlbertMainLayer(config, name="albert")
-        self.predictions = TFAlbertMLMHead(config, self.albert.embeddings, name="predictions")
-        self.sop = TFAlbertSOPHead(config)
+        self.cls = TFAlbertPreTrainingHeads(config, self.albert.embeddings, name="cls")
+
+    def get_output_embeddings(self):
+        return self.albert.embeddings
 
     @add_start_docstrings_to_callable(ALBERT_INPUTS_DOCSTRING)
-    def __call__(self, inputs, **kwargs):
-        r"""
+    def call(self, inputs, **kwargs):
+       r"""
     Return:
-        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
+        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.BertConfig`) and inputs:
         prediction_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`):
             Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
         sop_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, 2)`):
@@ -776,27 +780,30 @@ class TFAlbertForPreTraining(TFAlbertPreTrainedModel):
         from transformers import AlbertTokenizer, TFAlbertForPreTraining
 
         tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-        model = TFBertForPreTraining.from_pretrained('albert-base-v2')
+        model = TFAlbertForPreTraining.from_pretrained('albert-base-v2')
         input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
         outputs = model(input_ids)
         prediction_scores, sop_scores = outputs[:2]
 
         """
+
         outputs = self.albert(inputs, **kwargs)
+        sequence_output, pooled_output = outputs[:2]
+        prediction_scores, sop_scores = self.cls(sequence_output, pooled_output)
+        outputs = (prediction_scores, sop_scores) + outputs[2:]
+        return outputs
 
-        # MLM portion
-        sequence_output = outputs[0]
-        mlm_logits = self.predictions(sequence_output)
 
-        # SOP portion
-        pooled_output = outputs[1]
-        sop_logits = self.sop(pooled_output, training=kwargs.get("training", False))
+class TFAlbertPreTrainingHeads(tf.keras.layers.Layer):
+    def __init__(self, config, input_embeddings, **kwargs):
+        super().__init__(**kwargs)
+        self.predictions = TFAlbertMLMHead(config, input_embeddings, name="predictions")
+        self.sop_classifier = TFAlbertSOPHead(config, name="sop_classifier")
 
-        # Combine into outputs
-        # Add hidden_states and attention if they are here
-        outputs = (mlm_logits, sop_logits) + outputs[2:]
-
-        return outputs  # prediction_scores, logits, (hidden_states), (attentions)
+    def call(self, sequence_output, pooled_output, training: bool = False):
+        prediction_scores = self.predictions(sequence_output)
+        sop_scores = self.sop_classifier(pooled_output, training=training)
+        return prediction_scores, sop_scores
 
 
 class TFAlbertSOPHead(tf.keras.layers.Layer):
@@ -808,7 +815,7 @@ class TFAlbertSOPHead(tf.keras.layers.Layer):
             config.num_labels, kernel_initializer=get_initializer(config.initializer_range), name="classifier",
         )
 
-    def __call__(self, pooled_output, training: bool):
+    def call(self, pooled_output, training: bool):
         dropout_pooled_output = self.dropout(pooled_output, training=training)
         logits = self.classifier(dropout_pooled_output)
         return logits
