@@ -756,7 +756,7 @@ class TFAlbertForPreTraining(TFAlbertPreTrainedModel):
 
     @add_start_docstrings_to_callable(ALBERT_INPUTS_DOCSTRING)
     def call(self, inputs, **kwargs):
-       r"""
+        r"""
     Return:
         :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.BertConfig`) and inputs:
         prediction_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`):
