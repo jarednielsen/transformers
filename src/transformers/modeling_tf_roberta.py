@@ -29,10 +29,10 @@ from .modeling_tf_utils import TFPreTrainedModel, get_initializer, shape_list
 logger = logging.getLogger(__name__)
 
 TF_ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP = {
-    "roberta-base": "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-base-tf_model.h5",
-    "roberta-large": "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-large-tf_model.h5",
-    "roberta-large-mnli": "https://s3.amazonaws.com/models.huggingface.co/bert/roberta-large-mnli-tf_model.h5",
-    "distilroberta-base": "https://s3.amazonaws.com/models.huggingface.co/bert/distilroberta-base-tf_model.h5",
+    "roberta-base": "https://cdn.huggingface.co/roberta-base-tf_model.h5",
+    "roberta-large": "https://cdn.huggingface.co/roberta-large-tf_model.h5",
+    "roberta-large-mnli": "https://cdn.huggingface.co/roberta-large-mnli-tf_model.h5",
+    "distilroberta-base": "https://cdn.huggingface.co/distilroberta-base-tf_model.h5",
 }
 
 
@@ -49,8 +49,8 @@ class TFRobertaEmbeddings(TFBertEmbeddings):
         """ Replace non-padding symbols with their position numbers. Position numbers begin at
         padding_idx+1. Padding symbols are ignored. This is modified from fairseq's
         `utils.make_positions`.
-        :param torch.Tensor x:
-        :return torch.Tensor:
+        :param tf.Tensor x:
+        :return tf.Tensor:
         """
         mask = tf.cast(tf.math.not_equal(x, self.padding_idx), dtype=tf.int32)
         incremental_indicies = tf.math.cumsum(mask, axis=1) * mask
@@ -59,8 +59,8 @@ class TFRobertaEmbeddings(TFBertEmbeddings):
     def create_position_ids_from_inputs_embeds(self, inputs_embeds):
         """ We are provided embeddings directly. We cannot infer which are padded so just generate
         sequential position ids.
-        :param torch.Tensor inputs_embeds:
-        :return torch.Tensor:
+        :param tf.Tensor inputs_embeds:
+        :return tf.Tensor:
         """
         seq_length = shape_list(inputs_embeds)[1]
 
