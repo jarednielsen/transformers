@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from itertools import chain
 from os.path import abspath, exists
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -57,6 +57,10 @@ if is_torch_available():
         AutoModelForTokenClassification,
         AutoModelWithLMHead,
     )
+
+if TYPE_CHECKING:
+    from .modeling_utils import PreTrainedModel
+    from .modeling_tf_utils import TFPreTrainedModel
 
 
 logger = logging.getLogger(__name__)
@@ -570,6 +574,7 @@ class TextGenerationPipeline(Pipeline):
     # Padding text to help Transformer-XL and XLNet with short prompts as proposed by Aman Rusia
     # in https://github.com/rusiaaman/XLNet-gen#methodology
     # and https://medium.com/@amanrusia/xlnet-speaks-comparison-to-gpt-2-ea1a4e9ba39e
+
     PADDING_TEXT = """In 1991, the remains of Russian Tsar Nicholas II and his family
     (except for Alexei and Maria) are discovered.
     The voice of Nicholas's young son, Tsarevich Alexei Nikolaevich, narrates the
@@ -581,9 +586,30 @@ class TextGenerationPipeline(Pipeline):
     the Virgin Mary, prompting him to become a priest. Rasputin quickly becomes famous,
     with people, even a bishop, begging for his blessing. <eod> </s> <eos>"""
 
+    ALLOWED_MODELS = [
+        "XLNetLMHeadModel",
+        "TransfoXLLMHeadModel",
+        "ReformerModelWithLMHead",
+        "GPT2LMHeadModel",
+        "OpenAIGPTLMHeadModel",
+        "CTRLLMHeadModel",
+        "TFXLNetLMHeadModel",
+        "TFTransfoXLLMHeadModel",
+        "TFGPT2LMHeadModel",
+        "TFOpenAIGPTLMHeadModel",
+        "TFCTRLLMHeadModel",
+    ]
+
     def __call__(
         self, *args, return_tensors=False, return_text=True, clean_up_tokenization_spaces=False, **generate_kwargs
     ):
+        if self.model.__class__.__name__ not in self.ALLOWED_MODELS:
+            raise NotImplementedError(
+                "Generation is currently not supported for {}. Please select a model from {} for generation.".format(
+                    self.model.__class__.__name__, self.ALLOWED_MODELS
+                )
+            )
+
         text_inputs = self._args_parser(*args)
 
         results = []
@@ -614,7 +640,7 @@ class TextGenerationPipeline(Pipeline):
 
             result = []
             for generated_sequence in output_sequences:
-                generated_sequence = generated_sequence.tolist()
+                generated_sequence = generated_sequence.numpy().tolist()
                 record = {}
                 if return_tensors:
                     record["generated_token_ids"] = generated_sequence
@@ -1487,7 +1513,7 @@ class TranslationPipeline(Pipeline):
             return results
 
 
-# Register all the supported task here
+# Register all the supported tasks here
 SUPPORTED_TASKS = {
     "feature-extraction": {
         "impl": FeatureExtractionPipeline,
@@ -1509,7 +1535,7 @@ SUPPORTED_TASKS = {
                 "tf": "distilbert-base-uncased-finetuned-sst-2-english",
             },
             "config": "distilbert-base-uncased-finetuned-sst-2-english",
-            "tokenizer": "distilbert-base-cased",
+            "tokenizer": "distilbert-base-uncased",
         },
     },
     "ner": {
@@ -1550,9 +1576,9 @@ SUPPORTED_TASKS = {
         "tf": TFAutoModelWithLMHead if is_tf_available() else None,
         "pt": AutoModelWithLMHead if is_torch_available() else None,
         "default": {
-            "model": {"pt": "bart-large-cnn", "tf": None},
+            "model": {"pt": "bart-large-cnn", "tf": "t5-small"},
             "config": None,
-            "tokenizer": ("bart-large-cnn", {"use_fast": False}),
+            "tokenizer": {"pt": ("bart-large-cnn", {"use_fast": False}), "tf": "t5-small"},
         },
     },
     "translation_en_to_fr": {

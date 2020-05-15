@@ -159,7 +159,6 @@ def main():
             max_seq_length=data_args.max_seq_length,
             overwrite_cache=data_args.overwrite_cache,
             mode=Split.train,
-            local_rank=training_args.local_rank,
         )
         if training_args.do_train
         else None
@@ -172,7 +171,6 @@ def main():
             max_seq_length=data_args.max_seq_length,
             overwrite_cache=data_args.overwrite_cache,
             mode=Split.dev,
-            local_rank=training_args.local_rank,
         )
         if training_args.do_eval
         else None
@@ -219,6 +217,11 @@ def main():
             results.update(result)
 
     return results
+
+
+def _mp_fn(index):
+    # For xla_spawn (TPUs)
+    main()
 
 
 if __name__ == "__main__":

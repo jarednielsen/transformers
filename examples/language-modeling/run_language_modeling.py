@@ -118,13 +118,9 @@ class DataTrainingArguments:
 def get_dataset(args: DataTrainingArguments, tokenizer: PreTrainedTokenizer, evaluate=False, local_rank=-1):
     file_path = args.eval_data_file if evaluate else args.train_data_file
     if args.line_by_line:
-        return LineByLineTextDataset(
-            tokenizer=tokenizer, file_path=file_path, block_size=args.block_size, local_rank=local_rank
-        )
+        return LineByLineTextDataset(tokenizer=tokenizer, file_path=file_path, block_size=args.block_size)
     else:
-        return TextDataset(
-            tokenizer=tokenizer, file_path=file_path, block_size=args.block_size, local_rank=local_rank,
-        )
+        return TextDataset(tokenizer=tokenizer, file_path=file_path, block_size=args.block_size)
 
 
 def main():
@@ -265,7 +261,7 @@ def main():
 
         eval_output = trainer.evaluate()
 
-        perplexity = math.exp(eval_output["loss"])
+        perplexity = math.exp(eval_output["eval_loss"])
         result = {"perplexity": perplexity}
 
         output_eval_file = os.path.join(training_args.output_dir, "eval_results_lm.txt")
@@ -278,6 +274,11 @@ def main():
         results.update(result)
 
     return results
+
+
+def _mp_fn(index):
+    # For xla_spawn (TPUs)
+    main()
 
 
 if __name__ == "__main__":
